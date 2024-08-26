@@ -199,7 +199,32 @@ class BookingAPI(APIView):
     def get(self, request):
         user = request.user
         if user.groups.filter(name='Manager').exists():
-            params = request.query_params
-            
+            name = request.query_params.get('name')
+            date = request.query_params.get('date')
+            if name or date:
+                if name and date:
+                    pass
+                elif name:
+                    pass
+                else:
+                    bookings = models.Booking.objects.filter(date=date)
+                    serializer = serializers.BookingSerializer(bookings, many=True)
+                    if bookings.exists():
+                        return Response(
+                            serializer.data,
+                            status=status.HTTP_200_OK
+                        )
+                    else:
+                        return Response(
+                            serializer.data,
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                        
+            else:
+                bookings = models.Booking.objects.all()
+                return Response(
+                    serializers.BookingSerializer(bookings, many=True).data,
+                    status=status.HTTP_200_OK
+                )
         else:
             pass
