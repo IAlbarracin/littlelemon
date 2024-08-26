@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from restaurant import models
 from . import serializers
@@ -190,3 +191,15 @@ class MenuItemAPI(APIView):
                 },
                 status=status.HTTP_403_FORBIDDEN
             )
+
+class BookingAPI(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.groups.filter(name='Manager').exists():
+            params = request.query_params
+
+        else:
+            pass
