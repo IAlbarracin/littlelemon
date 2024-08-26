@@ -200,6 +200,6 @@ class BookingAPI(APIView):
         user = request.user
         if user.groups.filter(name='Manager').exists():
             params = request.query_params
-
+            
         else:
             pass
