@@ -6,6 +6,46 @@ from rest_framework import status
 from restaurant import models
 from . import serializers
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Q
+from django.utils import timezone
+from django.contrib.auth.models import User
+import datetime
+
+def generate_available_times(start=21, end=23, min_interval=5):
+    current_datetime = datetime.datetime(year=2024, month=1, day= 1, hour=start)
+    end_datetime = datetime.datetime(year=2024, month=1, day=1, hour=end)
+    current_time = current_datetime.time()
+    available_times = {f'{current_time.strftime('%H:%M')}': 'AVAILABLE'}
+    while current_datetime < end_datetime:
+        current_datetime += datetime.timedelta(minutes=min_interval)
+        current_time = current_datetime.time().strftime('%H:%M')
+        available_times.update({current_time: 'AVAILABLE'})
+    return available_times
+
+class Users(APIView):
+    def post(self, request):
+        serializer = serializers.UserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.create_user(
+            username=serializer.validated_data['username'],
+            password=serializer.validated_data['password'],
+            email=serializer.validated_data['email']
+        )
+
+        return Response(
+            serializers.UserSerializer(user).data,
+            status=status.HTTP_201_CREATED
+        )
+
+class UsersMe(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(
+            serializers.UserSerializer(request.user).data,
+            status=status.HTTP_200_OK
+        )
 
 class MenuAPI(APIView):
     authentication_classes = [TokenAuthentication]
@@ -194,7 +234,6 @@ class MenuItemAPI(APIView):
 
 class BookingAPI(APIView):
     authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
@@ -203,20 +242,50 @@ class BookingAPI(APIView):
             date = request.query_params.get('date')
             if name or date:
                 if name and date:
-                    pass
-                elif name:
-                    pass
-                else:
-                    bookings = models.Booking.objects.filter(date=date)
-                    serializer = serializers.BookingSerializer(bookings, many=True)
+                    bookings = models.Booking.objects.filter(Q(name__istartswith=name) & Q(date=date))
                     if bookings.exists():
+                        serializer = serializers.BookingSerializer(bookings, many=True)
                         return Response(
                             serializer.data,
                             status=status.HTTP_200_OK
                         )
                     else:
                         return Response(
+                            {
+                                'detail': f'No bookings have been found in {date} containing the name {name}'
+                            },
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                elif name:
+                    bookings = models.Booking.objects.filter(name__istartswith=name)
+                    
+                    if bookings.exists():
+                        serializer = serializers.BookingSerializer(bookings, many=True)
+                        return Response(
                             serializer.data,
+                            status=status.HTTP_200_OK
+                        )
+                    else:
+                        return Response(
+                            {
+                                'detail': f'No bookings have been found containing the name {name}'
+                            },
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                else:
+                    bookings = models.Booking.objects.filter(date=date)
+                    
+                    if bookings.exists():
+                        serializer = serializers.BookingSerializer(bookings, many=True)
+                        return Response(
+                            serializer.data,
+                            status=status.HTTP_200_OK
+                        )
+                    else:
+                        return Response(
+                            {
+                                'detail': f'No bookings have been found in {date}'
+                            },
                             status=status.HTTP_404_NOT_FOUND
                         )
                         
@@ -227,4 +296,97 @@ class BookingAPI(APIView):
                     status=status.HTTP_200_OK
                 )
         else:
-            pass
+            now = timezone.now()
+            if now.time() > datetime.time(hour=20):
+                now = now.date() + datetime.timedelta(days=1)
+            else:
+                now = now.date()
+            bookings = models.Booking.objects.filter(date__range=(now, now + datetime.timedelta(days=6)))
+            available_bookings = {}
+            for x in range(7):
+                date = now + datetime.timedelta(days=x)
+                available_bookings.update({date.strftime('%Y-%m-%d'): generate_available_times()})
+            for book in bookings:
+                available_bookings[book.date.strftime('%Y-%m-%d')].update({book.time.strftime('%H:%M'): 'NOT AVAILABLE'})
+            return Response(
+                {
+                    'detail': 'BOOKING AVAILABILITY',
+                    'bookings': available_bookings
+                },
+                status=status.HTTP_200_OK
+            )
+
+    
+    def post(self, request):
+        serializer = serializers.BookingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        print('error')
+        name = serializer.validated_data['name']
+        no_of_guests = serializer.validated_data['no_of_guests']
+        date = serializer.validated_data['date']
+        time = serializer.validated_data['time']
+        book = models.Booking(
+            name=name,
+            no_of_guests=no_of_guests,
+            date=date,
+            time=time,
+        )
+        return Response(
+            serializers.BookingSerializer(book).data,
+            status=status.HTTP_201_CREATED
+        )
+
+class SingleBookingAPI(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        user = request.user
+        if user.groups.filter(name='Manager').exists():
+            try:
+                booking = models.Booking.objects.get(id=id)
+            except ObjectDoesNotExist:
+                return Response(
+                    {
+                        'detail': 'No booking matches the id provided'
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response(
+                serializers.BookingSerializer(booking).data,
+                status=status.HTTP_200_OK
+            )
+        else:
+            return Response(
+                {
+                    'detail': 'Only managers are allowed to access this endpoint'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    def delete(self, request, id):
+        user = request.user
+        if user.groups.filter(name='Manager').exists():
+            try:
+                book = models.Booking.objects.get(id=id)
+            except ObjectDoesNotExist:
+                return Response(
+                    {
+                        'detail': 'No booking matches the id provided'
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            book.delete()
+            return Response(
+                {
+                    'detail': 'The booking has been deleted successfully'
+                },
+                status=status.HTTP_200_OK
+            )
+        else:
+            return Response(
+                {
+                    'detail': 'Only managers are allowed to access this endpoint'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )

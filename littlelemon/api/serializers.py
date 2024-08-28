@@ -1,5 +1,25 @@
 from rest_framework import serializers
 from restaurant.models import Menu, Booking
+from django.contrib.auth.models import User
+
+class GroupsSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+class UserSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+    groups = GroupsSerializer(read_only=True, many=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'username',
+            'password',
+            'email',
+            'groups'
+        ]
 
 class MenuSerializer(serializers.ModelSerializer):
     class Meta:
@@ -12,6 +32,16 @@ class MenuItemDeserializer(serializers.Serializer):
     inventory = serializers.IntegerField(min_value=0, max_value=65535, required=False)
 
 class BookingSerializer(serializers.ModelSerializer):
+    time_input = serializers.TimeField(input_formats=["%H:%M"], format="%H:%M", write_only=True)
+    time = serializers.TimeField(input_formats=["%H:%M"], format="%H:%M", read_only=True)
+
     class Meta:
         model = Booking
-        fields = '__all__'
+        fields = [
+            'id',
+            'name',
+            'no_of_guests',
+            'date',
+            'time',
+            'time_input'
+        ]
