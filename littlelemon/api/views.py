@@ -8,7 +8,7 @@ from . import serializers
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.utils import timezone
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, AnonymousUser
 import datetime
 
 def generate_available_times(start=21, end=23, min_interval=5):
@@ -318,23 +318,50 @@ class BookingAPI(APIView):
 
     
     def post(self, request):
-        serializer = serializers.BookingSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        print('error')
-        name = serializer.validated_data['name']
-        no_of_guests = serializer.validated_data['no_of_guests']
-        date = serializer.validated_data['date']
-        time = serializer.validated_data['time']
-        book = models.Booking(
-            name=name,
-            no_of_guests=no_of_guests,
-            date=date,
-            time=time,
-        )
-        return Response(
-            serializers.BookingSerializer(book).data,
-            status=status.HTTP_201_CREATED
-        )
+        user = request.user
+        if isinstance(user, AnonymousUser):
+            return Response(
+                {
+                    'detail': 'User authentication is required to perform this action'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+        else:
+            serializer = serializers.BookingSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            name = serializer.validated_data['name']
+            no_of_guests = serializer.validated_data['no_of_guests']
+            date = serializer.validated_data['date']
+            time = serializer.validated_data['time']
+            print(name)
+            print(no_of_guests)
+            print(date)
+            print(time)
+            book = models.Booking(
+                name=name,
+                no_of_guests=no_of_guests,
+                date=date,
+                time=time
+            )
+            try:
+                book.full_clean()
+                book.save()
+            except:
+                return Response(
+                    {
+                        'time': [
+                            'This time is invalid'
+                        ]
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            return Response(
+                {
+                    'detail': 'Your booking was created successfully',
+                    'book': serializers.BookingSerializer(book).data
+                },
+                status=status.HTTP_201_CREATED
+            )
 
 class SingleBookingAPI(APIView):
     authentication_classes = [TokenAuthentication]

@@ -32,8 +32,7 @@ class MenuItemDeserializer(serializers.Serializer):
     inventory = serializers.IntegerField(min_value=0, max_value=65535, required=False)
 
 class BookingSerializer(serializers.ModelSerializer):
-    time_input = serializers.TimeField(input_formats=["%H:%M"], format="%H:%M", write_only=True)
-    time = serializers.TimeField(input_formats=["%H:%M"], format="%H:%M", read_only=True)
+    time = serializers.TimeField(format="%H:%M")
 
     class Meta:
         model = Booking
@@ -43,5 +42,4 @@ class BookingSerializer(serializers.ModelSerializer):
             'no_of_guests',
             'date',
             'time',
-            'time_input'
         ]
